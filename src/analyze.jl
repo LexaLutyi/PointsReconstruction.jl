@@ -42,7 +42,7 @@ end
 
 lossD(ϕ, p) = errD(normD(p.maxk, p.rs, ϕ), p.d0)
 
-function default_loss_params(rs, ϕ; isK=false, isH=false, isD=false, isT=false)
+function default_loss_params(rs, ϕ; isK=false, isH=false, isD=false, isT=false, maxk=length(ϕ) - 1)
     p = (;rs)
     
     if isK 
@@ -56,7 +56,6 @@ function default_loss_params(rs, ϕ; isK=false, isH=false, isD=false, isT=false)
     end
     
     if isD
-        maxk = length(ϕ) - 1
         d = (; maxk, d0 = normD(maxk, rs, ϕ))
         p = merge(p, d)
     end
