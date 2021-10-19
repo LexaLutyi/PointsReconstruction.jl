@@ -13,8 +13,10 @@ include("gen_point_process.jl")
 include("summary_characteristics.jl")
 include("plot_functions.jl")
 include("analyze.jl")
-include("wavelets.jl")
-include("wavelet_sc.jl")
+# include("wavelets.jl")
+include("wavelets_rework.jl")
+# include("wavelet_sc.jl")
+include("wavelets_sc_rework.jl")
 
 export ϕ_uniform, ϕ_cluster, replace_random_point
 export distance, distances, K, D, T, H
@@ -23,8 +25,8 @@ export diffK
 export plotfdistr, plot_point_process
 export to_matrix, to_process, neighbor!, neighbor_discr!
 export analyze, lossK, lossD, lossH, default_loss_params
-export Wavelet, ψ_λ
-export v_λ_k_all, K_all
+
 export WaveletParams
+export lossW, lossW_params
 
 end
