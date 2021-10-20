@@ -7,6 +7,8 @@ wavelet_matrices(ws, J, L; ξ0=maximum(ws) / 2, c=1) =
 e_θ(l, L) = (cos(π / 2 + 2π * l / L), sin(π / 2 + 2π * l / L))
 τ_θ_j(l, j_, L) = round.(Int, 2^j_ .* e_θ(l, L))
 
+# ! k > 1 doesn't work if not in Γ_H
+
 function default_Γ_H(J, L, K)
     Γ_H = NamedTuple{
         (:j, :l, :θ, :k, :j_, :l_, :θ_, :k_, :τ_), 
@@ -101,7 +103,9 @@ struct WaveletParams{Tw}
         Tuple{Int64, Int64, Float64, Int64, Int64, 
         Int64, Float64, Int64, Tuple{Int64, Int64}}}
         }
+    jlk::Array{Tuple{Int64, Int64, Int64}, 3}
 end
+
 
 function WaveletParams(s, N, J, L, K, σ)
     dx = 2s / N
@@ -111,59 +115,72 @@ function WaveletParams(s, N, J, L, K, σ)
 
     g = MvNormal([0, 0], σ^2 * I)
     gaus = [pdf(g, [x, y]) for x in xs, y in xs]
-    Gaus = gaus |> ifftshift |> fft
+    Gaus = gaus |> ifftshift |> fft |> real
 
-    FN(μ) = M(Ws, μ) .* Gaus
+    FN(μ) = M(Ws, μ)
 
-    Ψs = wavelet_matrices(ws, J, L)
+    Ψs = [Ψ .* Gaus for Ψ in wavelet_matrices(ws, J, L)]
 
     Γ_H = default_Γ_H(J, L, K)
-    
-    WaveletParams(s, N, J, L, K, σ, ws, Ws, FN, Ψs, Γ_H)
+    jlk = collect(Iterators.product(1:J, 1:L, 1:K + 1))
+
+    WaveletParams(s, N, J, L, K, σ, ws, Ws, FN, Ψs, Γ_H, jlk)
 end
 
-# loss function computation
 
 phase_harmonics(z::Complex, k::Int) = abs(z) * exp(im * angle(z) * k)
-v_λ_k(cs, j, l, k) = mean(phase_harmonics.(cs[j + 1, l + 1], k))
+
+
+function wavelet_phase_harmonics(μ, wp, vs)
+    M = wp.FN(μ)
+    cs = [ifft(M .* Ψ) for Ψ in wp.Ψs]
+    m = ifft(M) .- vs[1]
+    csk = [phase_harmonics.(cs[j, l], k - 1) .- vs[2][j, l, k] for (j, l, k) in wp.jlk]
+    m, csk
+end
+
 
 function v_λ_k_all(μ, wp::WaveletParams)
-    MGaus = wp.FN(μ)
-    cs = [ifft(MGaus .* Ψ) for Ψ in wp.Ψs]
-    [v_λ_k(cs, j, l, k) for j in 0:wp.J - 1, l in 0:wp.L - 1, k in 0:wp.K]
+    m, csk = wavelet_phase_harmonics(μ, wp, (0., zeros(wp.J, wp.L, wp.K + 1)))
+    mean(m), mean.(csk)
 end
 
 
-function shift_phase_center(cs, vs, j, l, k, τ)
-    A = cs[j + 1, l + 1]
-    v = vs[j + 1, l + 1, k == 4 ? k : k + 1]
-    phase_harmonics.(circshift(A, τ), k) .- v
-end
-
-
-function K_μ(cs, vs; j, l, k, j_, l_, k_, τ_)
-    A = shift_phase_center(cs, vs, j, l, k, (0, 0))
-    B = shift_phase_center(cs, vs, j_, l_, k_, τ_)
+function K_μ(csk; j, l, k, j_, l_, k_, τ_)
+    A = csk[j + 1, l + 1, k + 1]
+    B = circshift(csk[j_ + 1, l_ + 1, k_ + 1], τ_)
     mean(@. A * conj(B))
 end
 
 
-K_μ(cs, vs, p) = K_μ(cs, vs; p.j, p.l, p.k, p.j_, p.l_, p.k_, p.τ_)
+function K_μ_0(m, csk)
+    [mean(m .* conj.(c)) for c in csk]
+end
+
+
+K_μ(csk, p) = K_μ(csk; p.j, p.l, p.k, p.j_, p.l_, p.k_, p.τ_)
 
 
 function K_all(μ, wp::WaveletParams, vs)
-    MGaus = wp.FN(μ)
-    cs = [ifft(MGaus .* Ψ) for Ψ in wp.Ψs]
-    K_μ.(Ref(cs), Ref(vs), wp.Γ_H)
+    m, csk = wavelet_phase_harmonics(μ, wp, vs)
+    K_main = [K_μ(csk, p) for p in wp.Γ_H]
+    K_0 = K_μ_0(m, csk)[:]
+    [K_main; K_0]
 end
 
 
 lossW(x; wp, vs, K0) = sum(abs2, K_all(x, wp, vs) - K0)
 lossW(x, p) = lossW(x; p...)
 
-function lossW_params(x; s, N, J, L, K, σ)
-    wp = WaveletParams(s, N, J, L, K, σ)
+
+function lossW_params(x, wp)
     vs = v_λ_k_all(x, wp)
     K0 = K_all(x, wp, vs)
     (; wp, vs, K0)
+end
+
+
+function lossW_params(x; s, N, J, L, K, σ)
+    wp = WaveletParams(s, N, J, L, K, σ)
+    lossW_params(x, wp)
 end

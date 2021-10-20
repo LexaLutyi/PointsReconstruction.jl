@@ -2,7 +2,7 @@
 function Ψ(w; ξ0, L, c)
     ϕ = atan(w[2], w[1])
     t = (norm(w) - ξ0) / ξ0
-    if (-π / 2 < ϕ < π / 2) || (-1 < t < 1)
+    if (-π / 2 < ϕ < π / 2) && (-1 < t < 1)
         c * exp(-abs2(t) / (1 - abs2(t))) * cos(ϕ)^(L - 1)
     else
         0.
