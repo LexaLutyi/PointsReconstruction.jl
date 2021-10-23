@@ -37,6 +37,29 @@ function ϕ_cluster(dim, n, k, m; delta = round(Int, sqrt(k)))
 end
 
 
+function ϕ_net(nline, npoint)
+    dx = 1 / npoint
+    xs = range(dx / 2, length = npoint, step = dx)
+    dy = 1 / nline
+    ys = range(dy / 2, length = nline, step = dy)
+
+    a = [[x, y] for x in xs, y in ys]
+    b = [[y, x] for x in xs, y in ys]
+    reduce(hcat, [a[:]; b[:]])
+end
+
+
+function ϕ_circles(nx, npoint, r=1 / 3nx)
+    xs = [r * [cos(x), sin(x)] for x in range(0., length = npoint, step = 2π / npoint)]
+    
+    dy = 1 / nx
+    ys = range(dy / 2, length = nx, step = dy)
+
+    a = reduce(hcat, [Ref([x, y]) .+ xs for x in ys, y in ys])
+    reduce(hcat, a[:])
+end
+
+
 # function replace_random_point(ϕ::AbstractMatrix{<:Real})
 #     n, dim = size(ϕ)
 #     ix = rand(1:n)
