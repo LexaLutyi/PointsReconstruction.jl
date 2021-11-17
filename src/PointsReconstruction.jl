@@ -1,7 +1,7 @@
 module PointsReconstruction
 
 using LinearAlgebra: norm, diagind, I, dot
-using Distances: Euclidean, pairwise
+using Distances: Euclidean, pairwise, PeriodicEuclidean, colwise
 # using Plots: plot, scatter, plot!, scatter!
 using Statistics: mean, var
 using StaticArrays: SVector
