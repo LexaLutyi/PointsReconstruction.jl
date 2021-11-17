@@ -192,14 +192,8 @@ end
 lossW(x, p) = lossW(x; p...)
 
 
-function lossW_params(x, wp, weights=ones(length(K0)), index=:)
+function lossW_params(x, wp, weights=ones(length(wp.Γ_H) + length(wp.jlk)), index=:)
     vs = v_λ_k_all(x, wp)
     K0 = K_all(x, wp, vs)
     (; wp, vs, K0, weights, index)
-end
-
-
-function lossW_params(x; s, N, J, L, K, σ, weights=ones(length(K0)), index=:)
-    wp = WaveletParams(s, N, J, L, K, σ)
-    lossW_params(x, wp, weights, index)
 end
