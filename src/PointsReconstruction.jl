@@ -1,30 +1,32 @@
 module PointsReconstruction
 
 using LinearAlgebra: norm, diagind, I, dot
-using Plots: plot, scatter, plot!, scatter!
+using Distances: Euclidean, pairwise
+# using Plots: plot, scatter, plot!, scatter!
 using Statistics: mean, var
 using StaticArrays: SVector
-using StatsBase: sample
+using StatsBase: sample, sqL2dist
 using FFTW: ifft, ifftshift, fftshift, fftfreq, fft
-using Interpolations: interpolate, Gridded, Linear, extrapolate
+# using Interpolations: interpolate, Gridded, Linear, extrapolate
 using Distributions: IsoNormal, MvNormal, pdf
+# using ThreadTools: tmap1
 
-include("gen_point_process.jl")
+include("generate_processes.jl")
 include("summary_characteristics.jl")
-include("plot_functions.jl")
-include("analyze.jl")
-# include("wavelets.jl")
-include("wavelets_rework.jl")
-# include("wavelet_sc.jl")
-include("wavelets_sc_rework.jl")
+# include("plot_functions.jl")
+# include("analyze.jl")
+include("wavelets.jl")
+include("wavelet_sc.jl")
 
-export ϕ_uniform, ϕ_cluster, replace_random_point
+export uniform, true_uniform, net
+export circle_cluster, normal_cluster, cross_cluster
+export clusters, voronoi
+
 export distance, distances, K, D, T, H
-export normK, normD, normT, normH
-export diffK
-export plotfdistr, plot_point_process
-export to_matrix, to_process, neighbor!, neighbor_discr!
-export analyze, lossK, lossD, lossH, default_loss_params
+
+# export plotfdistr, plot_point_process
+
+# export analyze, lossK, lossD, lossH, default_loss_params
 
 export WaveletParams
 export lossW, lossW_params

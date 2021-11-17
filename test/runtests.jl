@@ -1,6 +1,5 @@
 using PointsReconstruction
 using Test
+using Distances
 
-@testset "PointsReconstruction.jl" begin
-    # Write your tests here.
-end
+@testset "summary characteristics" begin include("summary_characteristics.jl") end

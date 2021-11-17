@@ -1,60 +1,20 @@
-g(t) = -1 < t < 1 ? exp(-abs2(t) / (1 - abs2(t))) : 0.
-
-
-Ψ(ω; ξ0, L, c) = -π / 2 < angle(ω) < π / 2 ? c * g((abs(ω) - ξ0) / ξ0) * cos(angle(ω))^(L - 1) : 0.
-
-# fs(C, N) = C * N / (N - 1)
-
-
-scale(x, j, θ) = 2^j * rotate(θ, x)
-
-
-function get_ψ(j=0, θ=0.;c=1., L=8, C::AbstractFloat=1., ξ0=π / C, n=100)
-    dx = C / n
-    N = 2n + 1
-
-    ωs = fftfreq(N, 1 / dx) |> fftshift
-
-    Ψ_centered = [Ψ(scale(x + im * y, j, θ); ξ0, L, c) for y in ωs, x in ωs]
-
-    Ψ_zero = ifftshift(Ψ_centered)
-    ψ_zero = ifft(Ψ_zero)
-    
-    xs = -C:dx:C
-    ψ_centered = fftshift(ψ_zero) / dx^2
-
-    ψ_centered, xs
+"Fourier transform of 2D Wavelet"
+function Ψ(w; ξ0, L, c)
+    ϕ = atan(w[2], w[1])
+    t = (norm(w) - ξ0) / ξ0
+    if (-π / 2 < ϕ < π / 2) && (-1 < t < 1)
+        c * exp(-abs2(t) / (1 - abs2(t))) * cos(ϕ)^(L - 1)
+    else
+        0.
+    end
 end
 
+rotate(w, θ) = [cos(θ) -sin(θ); sin(θ) cos(θ)] * w
+scale(w, j) = 2^j * w
 
-struct Wavelet{T}
-    ext::T
-    ξ::SVector{2, Float64}
-    c::Float64
-    L::Int
-    C::Float64
-    j::Int
-    θ::Float64
-end
+"Fourier transform of 2D Wavelet with scaling and rotation"
+Ψ(w, j, θ; ξ0, L, c) = Ψ(scale(rotate(w, θ), j); ξ0, L, c)
 
-
-function Wavelet(j::Int=0, θ::Float64=0.; c=1., L=8, C=1., ξ0=π / C, n=100)
-    ψ, xs = get_ψ(j, θ; n, c, ξ0, L, C)
-    itp = interpolate((xs, xs), ψ, Gridded(Linear()))
-    ext = extrapolate(itp, 0.)
-    Wavelet(ext, SVector(ξ0, 0.), c, L, C, j, θ)
-end
-
-
-(w::Wavelet)(x...) = w.ext(x...)
-(w::Wavelet)(x) = w.ext(x...)
-
-rotate(θ, ω::Complex) = ω * exp(im * θ)
-
-rotate(θ, x) = [
-    cos(θ) * x[1] - sin(θ) * x[2]
-    sin(θ) * x[1] + cos(θ) * x[2]
-]
-
-
-ψ_λ(x, j::Int, θ; w::Wavelet) = 2. ^ (-2j) * w(2. ^ (-j) * rotate(θ, x))
+"Square matrix of wavelet in frequency domain"
+wavelet_matrix(ws, j=0, θ=0.; ξ0, L, c) = 
+    [Ψ(SVector(w1, w2), j, θ; ξ0, L, c) for w1 in ws, w2 in ws]
