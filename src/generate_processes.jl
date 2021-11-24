@@ -42,22 +42,49 @@ clusters(centers, cluster) = mod.(reduce(hcat, [cluster() .+ c for c in eachcol(
 
 
 function voronoi_metric(x, support)
-    a = colwise(PeriodicEuclidean(ones(2)), support, x) |> sort
-    abs(a[2] - a[1])
+    a = colwise(PeriodicEuclidean(ones(2)), support, x)
+    b = partialsort!(a, 1:2)
+    abs(b[2] - b[1])
 end
 
 
-function voronoi(n, support)
-    ndims = size(support, 1)
-    all_points = rand(ndims, 1_000_000)
+function circle_metric(x, support, r)
+    a = abs.(colwise(PeriodicEuclidean(ones(2)), support, x) .- r)
+    partialsort!(a, 1)
+end
+
+
+function surface_points(ndims, npoints, metric)
+    all_points = rand(ndims, 1000 * npoints)
     
-    a = [voronoi_metric(x, support) for x in eachcol(all_points)]
+    a = [metric(x) for x in eachcol(all_points)]
     
     ix = sortperm(a)
-    points = all_points[:, ix[1:n]]
-    
-    # scatter(points[1, :], points[2, :], markersize=2)
-    # scatter!(support[1, :], support[2, :]) |>  display
+    points = all_points[:, ix[1:npoints]]
     
     points
+end
+
+
+"""
+    voronoi(n, nsupport)
+
+generate `n` points on the surface of Voronoi diagram
+"""
+function voronoi(npoints, nsupport)
+    ndims = 2
+    support = rand(ndims, nsupport)
+    surface_points(ndims, npoints, x -> voronoi_metric(x, support))
+end
+
+
+"""
+    circles(n, nsupport, radius)
+
+generate `n` points on the surface of circles
+"""
+function circles(npoints, nsupport, radius)
+    ndims = 2
+    support = rand(ndims, nsupport)
+    surface_points(ndims, npoints, x -> circle_metric(x, support, radius))
 end

@@ -20,7 +20,8 @@ include("wavelet_sc.jl")
 
 export uniform, true_uniform, net
 export circle_cluster, normal_cluster, cross_cluster
-export clusters, voronoi
+export clusters
+export voronoi, circles
 
 export distance, distances, K, D, T, H
 
