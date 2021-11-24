@@ -147,43 +147,44 @@ function WaveletParams(s, N, J, L, K, σ, Γ_H = default_Γ_H(J, L, K))
     gaus = [pdf(g, [x, y]) for x in xs, y in xs]
     Gaus = gaus |> ifftshift |> fft |> real
 
-    # FN(μ) = M(Ws, μ)
     FN(μ) = M(μ, ws)
 
-    Ψs = [Ψ .* Gaus for Ψ in wavelet_matrices(ws, J, L)]
+    Ψs = map(Ψ -> Ψ .* Gaus, reshape(wavelet_matrices(ws, J, L), :))
 
     ix, ix_shift, ix_0, perm_ix, perm_ix_shift = get_ix_subsets_from_Γ_H(Γ_H, J, L, K)
     WaveletParams(s, N, J, L, K, σ, ws, FN, Ψs, Γ_H, ix, ix_shift, ix_0)
 end
 
 
-function phase_harmonics(z::T, k::Int) where T <: Complex
+function phase_harmonics(z::T, k::Int) where T
     if k < 0
-        phase_harmonics(conj(z), -k)
+        ph(conj.(z), -k)
     elseif k == 0
-        abs(z) |> T
+        T(@. abs(z))
     elseif k == 1
-        z
+        copy(z)
     elseif k == 2
-        z * z / abs(z)
+        @. z * z / abs(z)
     elseif k == 3
-        z ^ 3 / abs2(z)
+        @. z ^ 3 / abs2(z)
     else
         if k % 2 == 0
-            z ^ k / abs(z) ^ (k - 1)
+            @. z ^ k / abs(z) ^ (k - 1)
         else
-            z ^ k / abs2(z) ^ (k ÷ 2)
+            @. z ^ k / abs2(z) ^ (k ÷ 2)
         end
     end
 end
-phase_harmonics(Z::AbstractArray{<:Complex}, k::Int) = phase_harmonics.(Z, k)
+
+
+all_phase_harmonics(w_jl, K) = mapreduce(k -> phase_harmonics.(w_jl, k), vcat, 0:K - 1)
 
 
 function wavelet_phase_harmonics(μ, wp, vs)
     M = wp.FN(μ)
     
     w_jl = map(Ψ -> ifft(M .* Ψ), wp.Ψs)
-    w_jlk = map(.-, mapreduce(k -> phase_harmonics.(w_jl, k), vcat, 0:wp.K - 1), vs[2])
+    w_jlk = map((w, v) -> w .- v, all_phase_harmonics(w_jl, wp.K), vs[2])
     
     m = ifft(M) .- vs[1]
     
@@ -197,8 +198,8 @@ function v_λ_k_all(μ, wp::WaveletParams)
 end
 
 
-cc(x, y::Complex) = mean(@. x * conj(y))
-cc(x, y::Real) = mean(@. x * y)
+cc(x, y::AbstractArray{<:Complex}) = mean(@. x * conj(y))
+cc(x, y::AbstractArray{<:Real}) = mean(@. x * y)
 
 
 cc_subset(w1, w2, ix) = map(ix) do (i, j)
