@@ -21,8 +21,8 @@ function default_Γ_H(J, L, K)
         0:J - 1,
         0:J - 1,
         [false, true],
-        0:K,
-        0:K
+        0:K - 1,
+        0:K - 1
     )
 
     for (l, l_, j, j_, isshift, k, k_) in p
@@ -76,23 +76,43 @@ function default_Γ_H(J, L, K)
     Γ_H
 end
 
-# 3
-"Fourier transform of δ(x - x0)"
-# Δ(w, x0) = exp(-2π * im * dot(x0, w))
-"Fourier transform of point process"
-# M(Ws, μ::AbstractMatrix) = [sum(Δ(w, x) for x in eachcol(μ)) for w in Ws]
 
-function Δ(x0, ws)
-    a = x0[1] .* ws
-    b = x0[2] .* ws
-    -2pi * (a' .+ b) .|> cis
+function get_ix_from_Γ_H(p, J, L)
+    ix1 = (p.j + 1) + J * (p.l) + J * L * (p.k)
+    ix2 = (p.j_ + 1) + J * (p.l_) + J * L * (p.k_)
+    (p.τ_ == (0, 0), ix1, ix2, p.τ_)
 end
 
 
-M(x, ws) = sum(Δ(xi, ws) for xi in eachcol(x))
+function get_ix_subsets_from_Γ_H(Γ_H, J, L, K)
+    ix_all = map(p -> get_ix_from_Γ_H(p, J, L), Γ_H)
+
+    perm_ix = findall(s -> s[1] == true, ix_all)
+    ix = map(s -> s[2:3], ix_all[perm_ix])
+
+    perm_ix_shift = findall(s -> s[1] == false, ix_all)
+    ix_shift = map(s -> s[2:4], ix_all[perm_ix_shift])
+
+    ix_0 = map(i -> (1, i), 1:J * L * K)
+    ix, ix_shift, ix_0, perm_ix, perm_ix_shift
+end
 
 
-# main
+function M(x, ws)
+    n = size(x, 2)
+    N = length(ws)
+    
+    a = x[1, :]
+    b = x[2, :]
+    aw = a * ws'
+    bw = b * ws'
+    c = reshape(aw, n, 1, N) .+ reshape(bw, n, N, 1)
+
+    m = sum(t -> cis(-2π * t), c, dims=1)
+    reshape(m, N, N)
+end
+
+
 struct WaveletParams{Tw}
     s::Float64
     N::Int   
@@ -102,18 +122,19 @@ struct WaveletParams{Tw}
     σ::Float64
 
     ws::Tw
-    Ws::Matrix{Vector{Float64}}
     FN::Function
-
     
-    Ψs::Matrix{Matrix{Float64}}
+    Ψs::Vector{Matrix{Float64}}
 
     Γ_H::Vector{NamedTuple{
         (:j, :l, :θ, :k, :j_, :l_, :θ_, :k_, :τ_), 
         Tuple{Int64, Int64, Float64, Int64, Int64, 
         Int64, Float64, Int64, Tuple{Int64, Int64}}}
         }
-    jlk::Array{Tuple{Int64, Int64, Int64}, 3}
+    
+    ix::Vector{Tuple{Int, Int}}
+    ix_shift::Vector{Tuple{Int, Int, Tuple{Int, Int}}}
+    ix_0::Vector{Tuple{Int, Int}}
 end
 
 
@@ -121,7 +142,6 @@ function WaveletParams(s, N, J, L, K, σ, Γ_H = default_Γ_H(J, L, K))
     dx = 2s / N
     xs = range(-s; length=N, step=dx)
     ws = fftfreq(N, 1 / dx)
-    Ws = [[w1, w2] for w1 in ws, w2 in ws]
 
     g = MvNormal([0, 0], σ^2 * I)
     gaus = [pdf(g, [x, y]) for x in xs, y in xs]
@@ -132,9 +152,8 @@ function WaveletParams(s, N, J, L, K, σ, Γ_H = default_Γ_H(J, L, K))
 
     Ψs = [Ψ .* Gaus for Ψ in wavelet_matrices(ws, J, L)]
 
-    jlk = collect(Iterators.product(1:J, 1:L, 1:K + 1))
-
-    WaveletParams(s, N, J, L, K, σ, ws, Ws, FN, Ψs, Γ_H, jlk)
+    ix, ix_shift, ix_0, perm_ix, perm_ix_shift = get_ix_subsets_from_Γ_H(Γ_H, J, L, K)
+    WaveletParams(s, N, J, L, K, σ, ws, FN, Ψs, Γ_H, ix, ix_shift, ix_0)
 end
 
 
@@ -164,7 +183,7 @@ function wavelet_phase_harmonics(μ, wp, vs)
     M = wp.FN(μ)
     
     w_jl = map(Ψ -> ifft(M .* Ψ), wp.Ψs)
-    w_jlk = map(.-, mapreduce(k -> phase_harmonics.(w_jl, k), vcat, 0:wp.K), vs[2])
+    w_jlk = map(.-, mapreduce(k -> phase_harmonics.(w_jl, k), vcat, 0:wp.K - 1), vs[2])
     
     m = ifft(M) .- vs[1]
     
@@ -173,44 +192,45 @@ end
 
 
 function v_λ_k_all(μ, wp::WaveletParams)
-    m, w_jlk = wavelet_phase_harmonics(μ, wp, (0., zeros(wp.J, wp.L, wp.K + 1)))
+    m, w_jlk = wavelet_phase_harmonics(μ, wp, (0., zeros(wp.J * wp.L * wp.K)))
     mean(m), mean.(w_jlk)
 end
 
 
-function K_μ(w_jlk; j, l, k, j_, l_, k_, τ_)
-    A = w_jlk[j + 1, l + 1, k + 1]
-    B = circshift(w_jlk[j_ + 1, l_ + 1, k_ + 1], τ_)
-    mean(@. A * conj(B))
+cc(x, y::Complex) = mean(@. x * conj(y))
+cc(x, y::Real) = mean(@. x * y)
+
+
+cc_subset(w1, w2, ix) = map(ix) do (i, j)
+    cc(w1[i], w2[j])
 end
 
 
-function K_μ_0(m, w_jlk)
-    map(c -> mean(m .* conj.(c)), w_jlk)
+cc_subset(w1, w2, ix::Vector{Tuple{Int, Int, Tuple{Int, Int}}}) = map(ix) do (i, j, shift)
+    cc(w1[i], circshift(w2[j], shift))
 end
 
 
-K_μ(w_jlk, p) = K_μ(w_jlk; p.j, p.l, p.k, p.j_, p.l_, p.k_, p.τ_)
+function K_all(μ, wp, vs)
+    m, w = wavelet_phase_harmonics(μ, wp, vs)
 
+    c1 = cc_subset(w, w, wp.ix)
+    c2 = cc_subset(w, w, wp.ix_shift)
+    c3 = cc_subset([m], w, wp.ix_0)
 
-function K_all(μ, wp::WaveletParams, vs)
-    m, w_jlk = wavelet_phase_harmonics(μ, wp, vs)
-    K_main = map(p -> K_μ(w_jlk, p), wp.Γ_H)
-    K_0 = K_μ_0(m, w_jlk)[:]
-    [K_main; K_0]
+    [c1; c2; c3]
 end
 
 
-function lossW(x; wp, vs, K0, weights, index)
-    k = (K_all(x, wp, vs) .* weights)[index]
-    k0 = (K0 .* weights)[index]
-    sqL2dist(k, k0)
+function lossW(x; wp, vs, K0, weights)
+    k = K_all(x, wp, vs) .* weights
+    sqL2dist(k, K0)
 end
 lossW(x, p) = lossW(x; p...)
 
 
-function lossW_params(x, wp, weights=ones(length(wp.Γ_H) + length(wp.jlk)), index=:)
+function lossW_params(x, wp, weights=ones(length(wp.ix) + length(wp.ix_shift) + length(wp.ix_0)))
     vs = v_λ_k_all(x, wp)
-    K0 = K_all(x, wp, vs)
-    (; wp, vs, K0, weights, index)
+    K0 = K_all(x, wp, vs) .* weights
+    (; wp, vs, K0, weights)
 end
