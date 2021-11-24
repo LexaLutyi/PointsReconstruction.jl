@@ -138,48 +138,65 @@ function WaveletParams(s, N, J, L, K, σ, Γ_H = default_Γ_H(J, L, K))
 end
 
 
-phase_harmonics(z::Complex, k::Int) = abs(z) * exp(im * angle(z) * k)
+function phase_harmonics(z::T, k::Int) where T <: Complex
+    if k < 0
+        phase_harmonics(conj(z), -k)
+    elseif k == 0
+        abs(z) |> T
+    elseif k == 1
+        z
+    elseif k == 2
+        z * z / abs(z)
+    elseif k == 3
+        z ^ 3 / abs2(z)
+    else
+        if k % 2 == 0
+            z ^ k / abs(z) ^ (k - 1)
+        else
+            z ^ k / abs2(z) ^ (k ÷ 2)
+        end
+    end
+end
+phase_harmonics(Z::AbstractArray{<:Complex}, k::Int) = phase_harmonics.(Z, k)
 
 
 function wavelet_phase_harmonics(μ, wp, vs)
     M = wp.FN(μ)
-    # cs = [ifft(M .* Ψ) for Ψ in wp.Ψs]
-    cs = map(Ψ -> ifft(M .* Ψ), wp.Ψs)
+    
+    w_jl = map(Ψ -> ifft(M .* Ψ), wp.Ψs)
+    w_jlk = map(.-, mapreduce(k -> phase_harmonics.(w_jl, k), vcat, 0:wp.K), vs[2])
+    
     m = ifft(M) .- vs[1]
-    # csk = [phase_harmonics.(cs[j, l], k - 1) .- vs[2][j, l, k] for (j, l, k) in wp.jlk]
-    csk = map(wp.jlk) do jlk
-        (j, l, k) = jlk
-        phase_harmonics.(cs[j, l], k - 1) .- vs[2][j, l, k]
-    end
-    m, csk
+    
+    m, w_jlk
 end
 
 
 function v_λ_k_all(μ, wp::WaveletParams)
-    m, csk = wavelet_phase_harmonics(μ, wp, (0., zeros(wp.J, wp.L, wp.K + 1)))
-    mean(m), mean.(csk)
+    m, w_jlk = wavelet_phase_harmonics(μ, wp, (0., zeros(wp.J, wp.L, wp.K + 1)))
+    mean(m), mean.(w_jlk)
 end
 
 
-function K_μ(csk; j, l, k, j_, l_, k_, τ_)
-    A = csk[j + 1, l + 1, k + 1]
-    B = circshift(csk[j_ + 1, l_ + 1, k_ + 1], τ_)
+function K_μ(w_jlk; j, l, k, j_, l_, k_, τ_)
+    A = w_jlk[j + 1, l + 1, k + 1]
+    B = circshift(w_jlk[j_ + 1, l_ + 1, k_ + 1], τ_)
     mean(@. A * conj(B))
 end
 
 
-function K_μ_0(m, csk)
-    map(c -> mean(m .* conj.(c)), csk)
+function K_μ_0(m, w_jlk)
+    map(c -> mean(m .* conj.(c)), w_jlk)
 end
 
 
-K_μ(csk, p) = K_μ(csk; p.j, p.l, p.k, p.j_, p.l_, p.k_, p.τ_)
+K_μ(w_jlk, p) = K_μ(w_jlk; p.j, p.l, p.k, p.j_, p.l_, p.k_, p.τ_)
 
 
 function K_all(μ, wp::WaveletParams, vs)
-    m, csk = wavelet_phase_harmonics(μ, wp, vs)
-    K_main = map(p -> K_μ(csk, p), wp.Γ_H)
-    K_0 = K_μ_0(m, csk)[:]
+    m, w_jlk = wavelet_phase_harmonics(μ, wp, vs)
+    K_main = map(p -> K_μ(w_jlk, p), wp.Γ_H)
+    K_0 = K_μ_0(m, w_jlk)[:]
     [K_main; K_0]
 end
 
