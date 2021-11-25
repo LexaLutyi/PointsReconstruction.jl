@@ -98,19 +98,29 @@ function get_ix_subsets_from_Γ_H(Γ_H, J, L, K)
 end
 
 
-function M(x, ws)
-    n = size(x, 2)
-    N = length(ws)
-    
-    a = x[1, :]
-    b = x[2, :]
-    aw = a * ws'
-    bw = b * ws'
-    c = reshape(aw, n, 1, N) .+ reshape(bw, n, N, 1)
-
-    m = sum(t -> cis(-2π * t), c, dims=1)
-    reshape(m, N, N)
+function Δ(x0, ws)
+    a = x0[1] .* ws
+    b = x0[2] .* ws
+    -2pi * (a' .+ b) .|> cis
 end
+
+
+M(x, ws) = sum(Δ(xi, ws) for xi in eachcol(x))
+
+
+# function M(x, ws)
+#     n = size(x, 2)
+#     N = length(ws)
+    
+#     a = x[1, :]
+#     b = x[2, :]
+#     aw = a * ws'
+#     bw = b * ws'
+#     c = reshape(aw, n, 1, N) .+ reshape(bw, n, N, 1)
+
+#     m = sum(t -> cis(-2π * t), c, dims=1)
+#     reshape(m, N, N)
+# end
 
 
 struct WaveletParams{Tw}
