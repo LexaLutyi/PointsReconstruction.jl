@@ -9,11 +9,11 @@ e_θ(l, L) = (cos(π / 2 + 2π * l / L), sin(π / 2 + 2π * l / L))
 
 # ! k > 1 doesn't work if not in Γ_H
 
-function default_Γ_H(J, L, K)
+function default_Γ_H(J, L, K; θtype=Float64)
     Γ_H = NamedTuple{
         (:j, :l, :θ, :k, :j_, :l_, :θ_, :k_, :τ_), 
-        Tuple{Int64, Int64, Float64, Int64, Int64, 
-        Int64, Float64, Int64, Tuple{Int64, Int64}}
+        Tuple{Int, Int, θtype, Int, Int, 
+        Int, θtype, Int, Tuple{Int, Int}}
     }[]
     p = Iterators.product(
         0:L - 1, 
@@ -98,7 +98,7 @@ function get_ix_subsets_from_Γ_H(Γ_H, J, L, K)
 end
 
 
-function M(x, ws)
+function M(x::AbstractArray{T}, ws) where T <: AbstractFloat
     n = size(x, 2)
     N = length(ws)
     
@@ -108,28 +108,28 @@ function M(x, ws)
     bw = b * ws'
     c = reshape(aw, n, 1, N) .+ reshape(bw, n, N, 1)
 
-    m = sum(t -> cis(-2π * t), c, dims=1)
+    m = sum(t -> cis(-T(2π) * t), c, dims=1)
     reshape(m, N, N)
 end
 
 
-struct WaveletParams{Tw}
-    s::Float64
+struct WaveletParams{TF, Tw}
+    s::TF
     N::Int   
     J::Int
     L::Int
     K::Int
-    σ::Float64
+    σ::TF
 
     ws::Tw
     FN::Function
     
-    Ψs::Vector{Matrix{Float64}}
+    Ψs::Vector{Matrix{TF}}
 
     Γ_H::Vector{NamedTuple{
         (:j, :l, :θ, :k, :j_, :l_, :θ_, :k_, :τ_), 
-        Tuple{Int64, Int64, Float64, Int64, Int64, 
-        Int64, Float64, Int64, Tuple{Int64, Int64}}}
+        Tuple{Int, Int, TF, Int, Int, 
+        Int, TF, Int, Tuple{Int, Int}}}
         }
     
     ix::Vector{Tuple{Int, Int}}
@@ -138,7 +138,7 @@ struct WaveletParams{Tw}
 end
 
 
-function WaveletParams(s, N, J, L, K, σ, Γ_H = default_Γ_H(J, L, K))
+function WaveletParams(s, N, J, L, K, σ, Γ_H = default_Γ_H(J, L, K, θtype=typeof(s)))
     dx = 2s / N
     xs = range(-s; length=N, step=dx)
     ws = fftfreq(N, 1 / dx)
@@ -148,8 +148,8 @@ function WaveletParams(s, N, J, L, K, σ, Γ_H = default_Γ_H(J, L, K))
     Gaus = gaus |> ifftshift |> fft |> real
 
     FN(μ) = M(μ, ws)
-
-    Ψs = map(Ψ -> Ψ .* Gaus, reshape(wavelet_matrices(ws, J, L), :))
+    float_type = typeof(s)
+    Ψs = map(Ψ -> float_type.(Ψ .* Gaus), reshape(wavelet_matrices(ws, J, L), :))
 
     ix, ix_shift, ix_0, perm_ix, perm_ix_shift = get_ix_subsets_from_Γ_H(Γ_H, J, L, K)
     WaveletParams(s, N, J, L, K, σ, ws, FN, Ψs, Γ_H, ix, ix_shift, ix_0)
@@ -192,8 +192,8 @@ function wavelet_phase_harmonics(μ, wp, vs)
 end
 
 
-function v_λ_k_all(μ, wp::WaveletParams)
-    m, w_jlk = wavelet_phase_harmonics(μ, wp, (0., zeros(wp.J * wp.L * wp.K)))
+function v_λ_k_all(μ, wp::WaveletParams{TF}) where TF <: AbstractFloat
+    m, w_jlk = wavelet_phase_harmonics(μ, wp, (zero(TF), zeros(TF, wp.J * wp.L * wp.K)))
     mean(m), mean.(w_jlk)
 end
 
@@ -220,6 +220,23 @@ function K_all(μ, wp, vs)
     c3 = cc_subset([m], w, wp.ix_0)
 
     [c1; c2; c3]
+end
+
+
+function K_all(x, y, wp, vs_x, vs_y)
+    mx, wx = wavelet_phase_harmonics(x, wp, vs_x)
+    my, wy = wavelet_phase_harmonics(y, wp, vs_y)
+
+    # cy1 = cc_subset(wy, wy, wp.ix)
+    # cy2 = cc_subset(wy, wy, wp.ix_shift)
+    # cy3 = cc_subset([my], wy, wp.ix_0)
+
+    cxy1 = cc_subset(wx, wy, wp.ix)
+    cxy2 = cc_subset(wx, wy, wp.ix_shift)
+    cxy3 = cc_subset([mx], wy, wp.ix_0)
+
+    # [cy1; cy2; cy3; cxy1; cxy2; cxy3]
+    [cxy1; cxy2; cxy3]
 end
 
 
