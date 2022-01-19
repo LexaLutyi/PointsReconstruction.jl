@@ -98,6 +98,7 @@ function get_ix_subsets_from_Γ_H(Γ_H, J, L, K)
 end
 
 
+<<<<<<< HEAD
 function M(x::AbstractArray{T}, ws) where T <: AbstractFloat
     n = size(x, 2)
     N = length(ws)
