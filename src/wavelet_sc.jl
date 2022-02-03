@@ -240,6 +240,43 @@ function K_all(x, y, wp, vs_x, vs_y)
 end
 
 
+ww_subset(w1, w2, ix) = map(ix) do (i, j)
+    x = w1[i]
+    y = w2[j]
+    std(@. x * conj(y))
+end
+
+
+ww_subset(w1, w2, ix::Vector{Tuple{Int, Int, Tuple{Int, Int}}}) = map(ix) do (i, j, shift)
+    x = w1[i]
+    y = circshift(w2[j], shift)
+    std(@. x * conj(y))
+end
+
+
+function W_all(μ, wp, vs)
+    m, w = wavelet_phase_harmonics(μ, wp, vs)
+
+    c1 = ww_subset(w, w, wp.ix)
+    c2 = ww_subset(w, w, wp.ix_shift)
+    c3 = ww_subset([m], w, wp.ix_0)
+
+    [c1; c2; c3]
+end
+
+
+function W_all(x, y, wp, vs_x, vs_y)
+    mx, wx = wavelet_phase_harmonics(x, wp, vs_x)
+    my, wy = wavelet_phase_harmonics(y, wp, vs_y)
+
+    cxy1 = ww_subset(wx, wy, wp.ix)
+    cxy2 = ww_subset(wx, wy, wp.ix_shift)
+    cxy3 = ww_subset([mx], wy, wp.ix_0)
+
+    [cxy1; cxy2; cxy3]
+end
+
+
 function lossW(x; wp, vs, K0, weights)
     k = K_all(x, wp, vs) .* weights
     sqL2dist(k, K0)
